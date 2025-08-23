@@ -1,0 +1,214 @@
+import { Plan, PlanGenerationRequest, PlanStepType } from '../types/plan';
+import { apiClient } from '../utils/apiClient';
+import { logger } from '../utils/logger';
+
+export class PlanService {
+  async generatePlan(request: PlanGenerationRequest): Promise<Plan> {
+    // Format prompt for Gemini
+    const prompt = this.buildPrompt(request);
+  const response = await apiClient.generatePlan(prompt);
+  // Parse response into Plan
+  const plan = this.parsePlanResponse(response, request.requirement);
+  // Prefer a concise title derived from the user's prompt for filenames and display
+  const derivedTitle = this.deriveTitleFromRequirement(request.requirement);
+  if (!plan.title || /^\s*generated\s+plan\s*$/i.test(plan.title) || /^\s*plan\s*$/i.test(plan.title)) {
+    plan.title = derivedTitle;
+  }
+  plan.metadata = { ...(plan.metadata || {}), requirement: request.requirement, derivedTitle };
+  return plan;
+  }
+
+  private buildPrompt(request: PlanGenerationRequest): string {
+    // Load template and inject requirement/codebase
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const templatePath = path.join(__dirname, '..', '..', 'resources', 'templates', 'plan-prompt.md');
+      const tpl = fs.readFileSync(templatePath, 'utf8');
+      return tpl
+        .replace('{{requirement}}', request.requirement)
+        .replace('{{codebase}}', JSON.stringify(request.codebase, null, 2));
+    } catch {
+      return `User Requirement: ${request.requirement}\nCodebase: ${JSON.stringify(request.codebase, null, 2)}`;
+    }
+  }
+
+  private parsePlanResponse(response: any, requirementForFallback?: string): Plan {
+    // Expect Google Generative Language API structure: candidates[0].content.parts[*].text
+    const collectText = (): string => {
+      const parts = response?.candidates?.[0]?.content?.parts;
+      if (Array.isArray(parts)) {
+        const texts = parts.map((p: any) => p?.text).filter((t: any) => typeof t === 'string');
+        if (texts.length) return texts.join('\n');
+      }
+      // Some responses may return a single text at top-level
+      if (typeof response?.text === 'string') return response.text;
+      // Log the first candidate for debugging
+      const cand0 = response?.candidates?.[0];
+      if (cand0) logger.warn('No text in parts; candidate[0] was', cand0);
+      return '';
+    };
+
+    const rawText = collectText();
+    if (!rawText) {
+  logger.error('Parsing failed: no text in Gemini response', response);
+  if (requirementForFallback) return this.planFromRequirement(requirementForFallback);
+  return this.fallbackPlan('No text returned from model.');
+    }
+
+    // Try to extract JSON from fenced code block or braces
+    const tryExtractJson = (s: string): any | undefined => {
+      // Prefer fenced JSON, else take the largest {...} block
+      const fenceJson = /```json\s*([\s\S]*?)```/i.exec(s);
+      const fence = fenceJson || /```\s*([\s\S]*?)```/i.exec(s);
+      const candidate = fenceJson ? fenceJson[1] : fence ? fence[1] : undefined;
+      const raw0 = candidate || (() => {
+        const start = s.indexOf('{');
+        const end = s.lastIndexOf('}');
+        if (start !== -1 && end !== -1 && end > start) return s.substring(start, end + 1);
+        return undefined;
+      })();
+      if (!raw0) return undefined;
+      // Soft-clean common LLM JSON issues (smart quotes, trailing commas)
+      const cleaned = String(raw0)
+        .replace(/[“”]/g, '"')
+        .replace(/[‘’]/g, "'")
+        .replace(/,\s*([}\]])/g, '$1')
+        .trim();
+      try {
+        return JSON.parse(cleaned);
+      } catch (e) {
+        logger.warn('JSON.parse failed on extracted content; returning undefined');
+        return undefined;
+      }
+    };
+
+    const json = tryExtractJson(rawText);
+    if (json) {
+      const plan = this.normalizePlan(json, rawText);
+      return plan;
+    }
+
+    // Build a plan by heuristically extracting steps from the text
+  const plan = this.planFromText(rawText);
+    return plan;
+  }
+
+  private normalizePlan(input: any, fallbackDesc: string): Plan {
+    try {
+      const mapType = (t: any): PlanStepType => {
+        if (!t) return PlanStepType.OTHER;
+        const normalized = String(t).toUpperCase().trim();
+        switch (normalized) {
+          case 'ANALYSIS': return PlanStepType.ANALYSIS;
+          case 'IMPLEMENTATION': return PlanStepType.IMPLEMENTATION;
+          case 'TESTING': return PlanStepType.TESTING;
+          case 'REFACTORING': return PlanStepType.REFACTORING;
+          case 'DOCUMENTATION': return PlanStepType.DOCUMENTATION;
+          default: return PlanStepType.OTHER;
+        }
+      };
+
+      // Some models wrap the plan in a top-level key
+      const src = (input && (input.plan || input.data || input.result)) || input;
+      const plan: Plan = {
+        id: String(src.id || Date.now()),
+        title: String(src.title || 'Generated Plan'),
+        description: String(src.description || 'Plan generated by Mini-Traycer'),
+        steps: Array.isArray(src.steps) ? src.steps.map((s: any, i: number) => ({
+          id: String(s.id || i + 1),
+          description: String(s.description || ''),
+          type: mapType(s.type),
+          dependencies: Array.isArray(s.dependencies) ? s.dependencies.map(String) : undefined,
+          estimatedEffort: s.estimatedEffort ? String(s.estimatedEffort) : undefined,
+          subSteps: Array.isArray(s.subSteps)
+            ? s.subSteps.map((ss: any, j: number) => ({
+                id: String(ss.id || `${i + 1}.${j + 1}`),
+                description: String(ss.description || ''),
+                type: mapType(ss.type),
+                dependencies: Array.isArray(ss.dependencies) ? ss.dependencies.map(String) : undefined,
+                estimatedEffort: ss.estimatedEffort ? String(ss.estimatedEffort) : undefined,
+              }))
+            : undefined
+        })) : []
+      };
+      return plan;
+    } catch (e) {
+      logger.error('normalizePlan failed', e);
+      return this.planFromText(fallbackDesc);
+    }
+  }
+
+  private planFromText(text: string): Plan {
+    const lines = text.split(/\r?\n/).map(l => l.trim());
+    const stepLines = lines.filter(l => /^(-|\d+\.|\*)\s+/.test(l));
+    const chunks = (stepLines.length ? stepLines : lines)
+      .filter(Boolean)
+      .slice(0, 20);
+    const inferType = (desc: string): PlanStepType => {
+      const d = desc.toLowerCase();
+      if (/(analy|investigat|decid|design|spike|assess)/.test(d)) return PlanStepType.ANALYSIS;
+      if (/(implement|create|add|build|update|wire|integrat|hook|endpoint|route)/.test(d)) return PlanStepType.IMPLEMENTATION;
+      if (/(test|verify|assert|qa|coverage|unit|e2e)/.test(d)) return PlanStepType.TESTING;
+      if (/(refactor|cleanup|optimiz|restructure)/.test(d)) return PlanStepType.REFACTORING;
+      if (/(doc|readme|comment|guid|changelog)/.test(d)) return PlanStepType.DOCUMENTATION;
+      return PlanStepType.OTHER;
+    };
+    const steps = chunks.map((desc, i) => ({
+      id: String(i + 1),
+      description: desc.replace(/^(-|\d+\.|\*)\s+/, ''),
+      type: inferType(desc)
+    }));
+    const desc = steps.length ? 'Plan generated by Mini-Traycer' : 'Plan generated, but content was not in the expected JSON format.';
+    return { id: String(Date.now()), title: 'Generated Plan', description: desc, steps };
+  }
+
+  private fallbackPlan(reason: string): Plan {
+    return { id: String(Date.now()), title: 'Generated Plan', description: `Plan generation completed, but parsing failed: ${reason}`, steps: [] };
+  }
+
+  private planFromRequirement(req: string): Plan {
+    const steps = [
+      { id: '1', description: `Clarify requirements for: ${req}`, type: PlanStepType.ANALYSIS },
+      { id: '2', description: `Identify files and modules impacted by: ${req}`, type: PlanStepType.ANALYSIS },
+      { id: '3', description: `Implement the core changes to support: ${req}`, type: PlanStepType.IMPLEMENTATION },
+      { id: '4', description: `Write tests covering the new behavior for: ${req}`, type: PlanStepType.TESTING },
+      { id: '5', description: `Update docs/README to reflect: ${req}`, type: PlanStepType.DOCUMENTATION }
+    ];
+    return { id: String(Date.now()), title: 'Generated Plan', description: 'Skeleton plan (fallback) based on your requirement.', steps };
+  }
+
+  private deriveTitleFromRequirement(req: string): string {
+    if (!req) return 'Plan';
+    let s = String(req).trim().replace(/^['"`]+|['"`]+$/g, '');
+    s = s.replace(/\s+/g, ' ').trim();
+    // Remove polite/aux prefixes
+    const prefixPatterns = [
+      /^please\s+/i,
+      /^(can|could)\s+you\s+/i,
+      /^we\s+need\s+to\s+/i,
+      /^let['’]?s\s+/i,
+      /^need\s+to\s+/i,
+    ];
+    for (const p of prefixPatterns) s = s.replace(p, '');
+    // Remove a leading imperative verb
+    const verbs = [
+      'add','apply','implement','create','update','fix','make','enable','set up','setup','introduce','integrate','wire','refactor','write','generate','support','configure','build','remove','delete','rename','restructure','document','improve','optimize'
+    ];
+    const lower = s.toLowerCase();
+    for (const v of verbs) {
+      const re = new RegExp('^' + v.replace(' ', '\\s*') + '\\s+', 'i');
+      if (re.test(lower)) { s = s.replace(re, ''); break; }
+    }
+    // Remove initial article
+    s = s.replace(/^\s*(the|a|an)\s+/i, '');
+    // Trim trailing punctuation
+    s = s.replace(/[.:!?]+$/g, '').trim();
+    // Title case words, preserve acronyms
+    const titled = s.split(' ').filter(Boolean).map(w => {
+      if (w.toUpperCase() === w || /[A-Z]{2,}/.test(w)) return w; // acronyms
+      return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+    }).join(' ');
+    return titled || 'Plan';
+  }
+}

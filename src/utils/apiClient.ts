@@ -1,0 +1,68 @@
+import axios from 'axios';
+import { config } from './config';
+import { logger } from './logger';
+
+function withKey(url: string, key: string) {
+  if (url.includes('?')) return `${url}&key=${encodeURIComponent(key)}`;
+  return `${url}?key=${encodeURIComponent(key)}`;
+}
+
+export const apiClient = {
+  async generatePlan(prompt: string) {
+  const apiKey = await config.getApiKeyAsync();
+  let endpoint = config.getApiEndpoint();
+  const url = withKey(endpoint, apiKey);
+  const timeout = Number(config.get('requestTimeoutMs', 30000));
+    try {
+      logger.debug('Calling Gemini', { endpoint: endpoint.split('?')[0], promptPreview: prompt.slice(0, 200) });
+      const response = await axios.post(
+        url,
+        {
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: prompt }]
+            }
+          ],
+          generationConfig: {
+            temperature: 0.4,
+            topK: 40,
+            topP: 0.95,
+            maxOutputTokens: 2048
+          }
+        },
+        {
+          headers: { 'Content-Type': 'application/json' },
+          timeout
+        }
+      );
+      logger.info('Gemini API response received');
+      // If no text returned, retry once with a strict JSON instruction
+      const parts = response.data?.candidates?.[0]?.content?.parts;
+      const gotText = Array.isArray(parts) && parts.some((p: any) => typeof p?.text === 'string' && p.text.trim());
+      if (!gotText) {
+        logger.warn('Empty response text; retrying with JSON-only instruction');
+        const strictPrompt = `${prompt}\n\nReturn ONLY JSON matching this TypeScript type:\ninterface Plan { id: string; title: string; description: string; steps: { id: string; description: string; type: 'ANALYSIS'|'IMPLEMENTATION'|'TESTING'|'REFACTORING'|'DOCUMENTATION'|'OTHER'; dependencies?: string[]; estimatedEffort?: string; }[] }`;
+        const retry = await axios.post(
+          url,
+          {
+            contents: [
+              { role: 'user', parts: [{ text: strictPrompt }] }
+            ],
+            generationConfig: { temperature: 0.3, maxOutputTokens: 2048 }
+          },
+          { headers: { 'Content-Type': 'application/json' }, timeout }
+        );
+        logger.info('Gemini API retry response received');
+        return retry.data;
+      }
+      return response.data;
+    } catch (err: any) {
+      const status = err?.response?.status;
+      const data = err?.response?.data;
+      const msg = data ? (typeof data === 'string' ? data : JSON.stringify(data)) : (err?.message || String(err));
+      logger.error('Gemini API error', { status, msg });
+      throw new Error(`Gemini API error (${status || 'no-status'}): ${msg}`);
+    }
+  }
+};

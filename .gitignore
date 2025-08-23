@@ -1,0 +1,9 @@
+node_modules/
+out/
+*.vsix
+.env
+npm-debug.log
+.vscode/*.code-workspace
+.DS_Store
+*.tsbuildinfo
+.vscode/settings.json

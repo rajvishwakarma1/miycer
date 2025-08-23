@@ -1,0 +1,27 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "npm: compile",
+      "type": "shell",
+      "command": "npm run compile",
+      "group": "build",
+      "problemMatcher": ["$tsc"],
+      "detail": "Compile TypeScript for Mini-Traycer"
+    },
+    {
+      "label": "npm: watch",
+      "type": "shell",
+      "command": "npm run watch",
+      "group": "build",
+      "detail": "Watch TypeScript for Mini-Traycer"
+    },
+    {
+      "label": "npm: package",
+      "type": "shell",
+      "command": "npm run package",
+      "group": "build",
+      "detail": "Package VS Code extension"
+    }
+  ]
+}

@@ -1,0 +1,85 @@
+{
+  "name": "mini-traycer",
+  "displayName": "Mini-Traycer",
+  "description": "A planning layer for coding agents. Generates, edits, and exports detailed implementation plans.",
+  "version": "0.1.0",
+  "publisher": "your-publisher-id",
+  "engines": {
+    "vscode": ">=1.80.0"
+  },
+  "categories": ["AI", "Other"],
+  "activationEvents": ["*"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "Mini-Traycer",
+      "properties": {
+        "miniTraycer.geminiApiKey": {
+          "type": "string",
+          "markdownDescription": "Gemini API key used to generate plans. You can also set the environment variable `GEMINI_API_KEY`.",
+          "default": "",
+          "scope": "window"
+        },
+        "miniTraycer.geminiApiEndpoint": {
+          "type": "string",
+          "markdownDescription": "Gemini endpoint URL. Default points to Gemini 2.5 Pro generateContent API.",
+          "default": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent",
+          "scope": "window"
+        },
+        "miniTraycer.requestTimeoutMs": {
+          "type": "number",
+          "description": "HTTP request timeout (ms) when calling the Gemini API.",
+          "default": 30000,
+          "scope": "window"
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "miniTraycer",
+          "title": "Mini-Traycer",
+          "icon": "resources/icons/plan.svg"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "miniTraycer.createPlan",
+        "title": "Mini-Traycer: Create Plan"
+      },
+      {
+        "command": "miniTraycer.exportPlan",
+        "title": "Mini-Traycer: Export Plan"
+      }
+    ],
+    "views": {
+      "miniTraycer": [
+        {
+          "id": "traycerPanel",
+          "name": "Mini-Traycer",
+          "type": "webview"
+        },
+        {
+          "id": "planTree",
+          "name": "Plans"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -p . --watch",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.80.0",
+  "vsce": "^2.15.0"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "ts-morph": "^18.0.0"
+  }
+}
