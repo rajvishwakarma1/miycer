@@ -37,6 +37,29 @@ export function activate(context: vscode.ExtensionContext) {
       await uiController.exportPlan();
     })
   );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('miniTraycer.clearAllPlans', async () => {
+      await uiController.clearAllPlans();
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('miniTraycer.setApiKey', async () => {
+      const current = process.env.GEMINI_API_KEY || (vscode.workspace.getConfiguration('miniTraycer').get('geminiApiKey') as string | undefined) || '';
+      const entered = await vscode.window.showInputBox({
+        prompt: 'Enter your Gemini API key',
+        placeHolder: 'AIza... (stored in user settings)',
+        ignoreFocusOut: true,
+        password: true,
+        value: current,
+        validateInput: (v) => (/^AIza[0-9A-Za-z_\-]{20,}$/.test(String(v || '').trim()) ? undefined : 'Enter a valid Gemini API key (starts with AIza...)')
+      });
+      if (!entered) return;
+      await vscode.workspace.getConfiguration('miniTraycer').update('geminiApiKey', entered.trim(), vscode.ConfigurationTarget.Global);
+      vscode.window.showInformationMessage('Mini-Traycer: Gemini API key updated.');
+    })
+  );
 }
 
 export function deactivate() {

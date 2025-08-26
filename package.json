@@ -51,6 +51,14 @@
       {
         "command": "miniTraycer.exportPlan",
         "title": "Mini-Traycer: Export Plan"
+      },
+      {
+        "command": "miniTraycer.clearAllPlans",
+        "title": "Mini-Traycer: Delete All Plans"
+      },
+      {
+        "command": "miniTraycer.setApiKey",
+        "title": "Mini-Traycer: Set Gemini API Key"
       }
     ],
     "views": {

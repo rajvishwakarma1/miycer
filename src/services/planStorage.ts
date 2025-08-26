@@ -39,4 +39,8 @@ export class PlanStorage {
     delete plans[id];
     this.context.workspaceState.update(this.storageKey, plans);
   }
+
+  clearAll() {
+    this.context.workspaceState.update(this.storageKey, {});
+  }
 }

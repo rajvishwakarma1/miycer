@@ -57,6 +57,23 @@ export class UIController {
     return result;
   }
 
+  // Expose saved plans for webview to pre-populate list
+  listSavedPlans(): Plan[] {
+    try {
+      return this.planStorage.listSavedPlans();
+    } catch {
+      return [];
+    }
+  }
+
+  getPlanById(id: string): Plan | undefined {
+    try {
+      return this.planStorage.load(id);
+    } catch {
+      return undefined;
+    }
+  }
+
   async createPlanFromRequirement(requirement: string): Promise<Plan | undefined> {
     if (!requirement?.trim()) return undefined;
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -147,5 +164,17 @@ export class UIController {
     } catch (e) {
       vscode.window.showErrorMessage('Failed to save plan file. See logs.');
     }
+  }
+
+  async clearAllPlans() {
+    const confirm = await vscode.window.showWarningMessage(
+      'Delete all saved Mini-Traycer plans? This cannot be undone.',
+      { modal: true },
+      'Delete All'
+    );
+    if (confirm !== 'Delete All') return;
+    this.planStorage.clearAll();
+    this.planTreeProvider.setPlans([]);
+    vscode.window.showInformationMessage('All Mini-Traycer plans have been deleted.');
   }
 }
