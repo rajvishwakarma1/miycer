@@ -116,9 +116,7 @@ Short walkthrough of the extension:
 
 - Local file: [miycer.mp4](miycer.mp4)
 
-Note: GitHub and the VS Code Marketplace don’t autoplay local videos in README. If you also publish on YouTube, add the link here for inline playback:
-
-YouTube: https://youtu.be/YOUR_VIDEO_ID
+YouTube: https://youtu.be/-wUUB9WV1eI
 
 ## Issues we faced and fixes
 
