@@ -1,4 +1,4 @@
-# Mini‑Traycer
+# Miycer (Mini Traycer)
 
 A VS Code extension that acts as a planning layer for coding agents. It generates an actionable plan first, then hands off to your agent or Copilot to execute.
 
@@ -109,6 +109,16 @@ code --install-extension .\mini-traycer-0.1.0.vsix
 ```
 
 After install, open the Activity Bar → Mini‑Traycer and start using it. README images and icons are bundled automatically.
+
+## Demo video
+
+Short walkthrough of the extension:
+
+- Local file: [miycer.mp4](miycer.mp4)
+
+Note: GitHub and the VS Code Marketplace don’t autoplay local videos in README. If you also publish on YouTube, add the link here for inline playback:
+
+YouTube: https://youtu.be/YOUR_VIDEO_ID
 
 ## Issues we faced and fixes
 
