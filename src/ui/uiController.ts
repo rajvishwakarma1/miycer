@@ -6,6 +6,7 @@ import { CodebaseScanner } from '../services/codebaseScanner';
 import { PlanTreeProvider } from './planTreeProvider';
 import { PlanWebview } from './planWebview';
 import { Plan } from '../types/plan';
+import { ImageAttachment } from '../types/attachments';
 import { logger } from '../utils/logger';
 
 export class UIController {
@@ -74,7 +75,7 @@ export class UIController {
     }
   }
 
-  async createPlanFromRequirement(requirement: string): Promise<Plan | undefined> {
+  async createPlanFromRequirement(requirement: string, attachments: ImageAttachment[] = []): Promise<Plan | undefined> {
     if (!requirement?.trim()) return undefined;
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!workspaceRoot) {
@@ -84,7 +85,7 @@ export class UIController {
     let result: Plan | undefined;
     await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Generating plan...' }, async () => {
       try {
-        const plan = await this.planService.generatePlan({ requirement, codebase });
+        const plan = await this.planService.generatePlan({ requirement, codebase }, attachments);
         this.planStorage.save(plan);
         this.planTreeProvider.setPlans(this.planStorage.listSavedPlans());
         this.planWebview.show(plan);

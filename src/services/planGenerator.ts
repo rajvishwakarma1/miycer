@@ -1,12 +1,13 @@
 import { Plan, PlanGenerationRequest, PlanStepType } from '../types/plan';
+import { ImageAttachment } from '../types/attachments';
 import { apiClient } from '../utils/apiClient';
 import { logger } from '../utils/logger';
 
 export class PlanService {
-  async generatePlan(request: PlanGenerationRequest): Promise<Plan> {
+  async generatePlan(request: PlanGenerationRequest, attachments: ImageAttachment[] = []): Promise<Plan> {
     // Format prompt for Gemini
     const prompt = this.buildPrompt(request);
-  const response = await apiClient.generatePlan(prompt);
+  const response = await apiClient.generatePlan(prompt, attachments);
   // Parse response into Plan
   const plan = this.parsePlanResponse(response, request.requirement);
   // Prefer a concise title derived from the user's prompt for filenames and display

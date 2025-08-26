@@ -29,7 +29,7 @@ export class TraycerViewProvider implements vscode.WebviewViewProvider {
         } catch {}
         // immediate ack so UI can react
         this.view?.webview.postMessage({ command: 'planAck' });
-        const plan = await this.ui.createPlanFromRequirement(msg.text.trim());
+        const plan = await this.ui.createPlanFromRequirement(msg.text.trim(), Array.isArray(msg.attachments) ? msg.attachments : []);
         if (plan) {
           this.view?.webview.postMessage({ command: 'planCreated', plan: {
             id: plan.id,
@@ -167,23 +167,38 @@ export class TraycerViewProvider implements vscode.WebviewViewProvider {
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} https: data:; script-src ${webview.cspSource} 'nonce-${nonce}'; style-src ${webview.cspSource} 'unsafe-inline';" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
+  :root{
+    --card-bg: var(--vscode-editorWidget-background);
+    --card-border: var(--vscode-editorWidget-border);
+    --muted: var(--vscode-descriptionForeground);
+    --accent: var(--vscode-button-background);
+    --accent-fore: var(--vscode-button-foreground);
+    --accent-hover: var(--vscode-button-hoverBackground);
+  }
   * { box-sizing: border-box; }
-    html, body { height: 100%; }
+  html, body { height: 100%; }
   body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); padding: 8px; margin: 0; }
   .app { min-height: 100vh; display: flex; flex-direction: column; }
   .content { flex: 1 1 auto; padding-bottom: 12px; }
-  .footer { margin-top: auto; position: sticky; bottom: 0; width: 100%; background: var(--vscode-sideBar-background, transparent); padding: 8px 0 10px; border-top: 1px solid var(--vscode-panel-border); z-index: 1; }
+  .footer { margin-top: auto; position: sticky; bottom: 0; width: 100%; background: var(--vscode-sideBar-background, transparent); padding: 8px 0 10px; border-top: 1px solid var(--card-border); z-index: 1; }
   .footer-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; align-items: center; }
-    .step { border: 1px solid var(--vscode-panel-border); border-radius: 8px; padding: 10px; margin: 8px 0; }
-    .step .title { display: flex; align-items: center; gap: 8px; font-weight: 600; }
-    .badge { font-size: 11px; padding: 2px 6px; border-radius: 999px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); }
-    .muted { color: var(--vscode-descriptionForeground); font-size: 12px; }
-    .input { display: flex; gap: 6px; align-items: stretch; margin-top: 10px; }
-    textarea { flex: 1; min-height: 72px; resize: vertical; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); border-radius: 6px; padding: 8px; }
-    button { padding: 6px 10px; border: none; border-radius: 6px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); cursor: pointer; }
-    .stepsList { margin-top: 6px; }
-    .stepsList .item { border-left: 3px solid var(--vscode-panel-border); padding-left: 8px; margin: 6px 0; }
-    .small { font-size: 11px; }
+  .step { border: 1px solid var(--card-border); background: var(--card-bg); border-radius: 8px; padding: 12px; margin: 8px 0; }
+  .step .title { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+  .badge { font-size: 11px; padding: 2px 6px; border-radius: 999px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); }
+  .muted { color: var(--muted); font-size: 12px; }
+  .input { display: flex; gap: 6px; align-items: stretch; margin-top: 10px; }
+  textarea { flex: 1; min-height: 72px; resize: vertical; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); border-radius: 6px; padding: 8px; }
+  button { padding: 6px 10px; border: none; border-radius: 6px; background: var(--accent); color: var(--accent-fore); cursor: pointer; }
+  button.secondary { background: transparent; border: 1px solid var(--card-border); color: var(--vscode-foreground); }
+  button:hover { background: var(--accent-hover); }
+  .icon { background: transparent; border: 1px solid var(--card-border); color: var(--vscode-foreground); }
+  .stepsList { margin-top: 6px; }
+  .stepsList .item { border-left: 3px solid var(--card-border); padding-left: 8px; margin: 6px 0; cursor: pointer; }
+  .small { font-size: 11px; }
+  .thumbs { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  .thumb { position:relative; border:1px solid var(--card-border); border-radius:6px; overflow:hidden; width:44px; height:44px; }
+  .thumb img { width:100%; height:100%; object-fit:cover; }
+  .thumb .x { position:absolute; top:-6px; right:-6px; background:#0008; color:#fff; border:0; border-radius:10px; width:18px; height:18px; font-size:11px; cursor:pointer; }
   </style>
 </head>
 <body>
@@ -191,11 +206,16 @@ export class TraycerViewProvider implements vscode.WebviewViewProvider {
     <div class="content">
       <div class="step">
         <div class="title">1. User Query <span class="badge">Step</span></div>
-        <div class="muted small">Describe what you want to build. Keep it short and specific.</div>
+        <div class="muted small">Describe what you want to build. Attach screenshots if helpful.</div>
         <div class="input">
           <textarea id="taskText" placeholder="e.g., Add health check endpoint"></textarea>
-          <button id="sendBtn" title="Ctrl+Enter">Generate</button>
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            <button class="icon" id="attachBtn" title="Upload image">📎</button>
+            <button id="sendBtn" title="Ctrl+Enter">Generate</button>
+          </div>
+          <input id="fileInput" type="file" accept="image/*" style="display:none" />
         </div>
+        <div id="thumbs" class="thumbs"></div>
         <div class="small" style="margin-top:6px; display:none;" id="editQueryRow">
           <button id="editQueryBtn" style="background:transparent; color: var(--vscode-textLink-foreground); padding:0;">Edit…</button>
           <span class="muted" style="margin-left:6px;">refine your query inline</span>

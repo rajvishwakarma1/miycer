@@ -4,6 +4,11 @@
   "description": "A planning layer for coding agents. Generates, edits, and exports detailed implementation plans.",
   "version": "0.1.0",
   "publisher": "your-publisher-id",
+  "icon": "resources/icons/mini-traycer.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rajvishwakarma1/miycer"
+  },
   "engines": {
     "vscode": ">=1.80.0"
   },
@@ -66,11 +71,13 @@
         {
           "id": "traycerPanel",
           "name": "Mini-Traycer",
-          "type": "webview"
+          "type": "webview",
+          "icon": "resources/icons/plan.svg"
         },
         {
           "id": "planTree",
-          "name": "Plans"
+          "name": "Plans",
+          "icon": "resources/icons/step.svg"
         }
       ]
     }

@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { config } from './config';
 import { logger } from './logger';
+import { ImageAttachment } from '../types/attachments';
 
 function withKey(url: string, key: string) {
   if (url.includes('?')) return `${url}&key=${encodeURIComponent(key)}`;
@@ -8,20 +9,26 @@ function withKey(url: string, key: string) {
 }
 
 export const apiClient = {
-  async generatePlan(prompt: string) {
+  async generatePlan(prompt: string, attachments: ImageAttachment[] = []) {
   const apiKey = await config.getApiKeyAsync();
   let endpoint = config.getApiEndpoint();
   const url = withKey(endpoint, apiKey);
   const timeout = Number(config.get('requestTimeoutMs', 30000));
     const doCall = async () => {
       logger.debug('Calling Gemini', { endpoint: endpoint.split('?')[0], promptPreview: prompt.slice(0, 200) });
+      // Build parts: user text + any inline images
+      const parts: any[] = [{ text: prompt }];
+      for (const att of attachments) {
+        if (!att?.dataBase64) continue;
+        parts.push({ inlineData: { mimeType: att.mime || 'image/png', data: att.dataBase64 } });
+      }
       return axios.post(
         url,
         {
           contents: [
             {
               role: 'user',
-              parts: [{ text: prompt }]
+              parts
             }
           ],
           generationConfig: {
@@ -46,11 +53,11 @@ export const apiClient = {
       if (!gotText) {
         logger.warn('Empty response text; retrying with JSON-only instruction');
         const strictPrompt = `${prompt}\n\nReturn ONLY JSON matching this TypeScript type:\ninterface Plan { id: string; title: string; description: string; steps: { id: string; description: string; type: 'ANALYSIS'|'IMPLEMENTATION'|'TESTING'|'REFACTORING'|'DOCUMENTATION'|'OTHER'; dependencies?: string[]; estimatedEffort?: string; }[] }`;
-        const retry = await axios.post(
+    const retry = await axios.post(
           url,
           {
             contents: [
-              { role: 'user', parts: [{ text: strictPrompt }] }
+      { role: 'user', parts: [{ text: strictPrompt }] }
             ],
             generationConfig: { temperature: 0.3, maxOutputTokens: 2048 }
           },

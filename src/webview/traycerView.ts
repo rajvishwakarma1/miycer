@@ -8,6 +8,7 @@
   };
   const vscode: any = getVsCodeApi();
   let initialized = false;
+  let thumbs: HTMLDivElement | null = null;
   function escapeHtml(s: string): string {
     return String(s || '').replace(/[&<>"']/g, (c) => {
       switch (c) {
@@ -32,7 +33,7 @@
       const txt = txtEl && txtEl.value ? txtEl.value : '';
       if (btn) btn.setAttribute('disabled', 'true');
       if (container) container.innerHTML = '<div class="muted small">Generating…</div>';
-      try { vscode.postMessage({ command: 'createPlan', text: txt }); } catch (e) {
+      try { vscode.postMessage({ command: 'createPlan', text: txt, attachments: attachments }); } catch (e) {
         if (container) container.innerHTML = '<div class="muted small">Unable to post message to extension.</div>';
       }
     };
@@ -47,6 +48,9 @@
   const inlineActions = document.getElementById('inlineEditActions');
   const exportBtn = document.getElementById('exportCopilotBtn') as HTMLButtonElement | null;
   const deleteAllBtn = document.getElementById('deleteAllPlansBtn') as HTMLButtonElement | null;
+  const attachBtn = document.getElementById('attachBtn') as HTMLButtonElement | null;
+  const fileInput = document.getElementById('fileInput') as HTMLInputElement | null;
+  thumbs = document.getElementById('thumbs') as HTMLDivElement | null;
     if (exportBtn) exportBtn.addEventListener('click', () => {
       try {
         const plan = currentPlan;
@@ -58,6 +62,27 @@
     });
     if (deleteAllBtn) deleteAllBtn.addEventListener('click', () => {
       try { vscode.postMessage({ command: 'deleteAllPlans' }); } catch {}
+    });
+    if (attachBtn && fileInput) attachBtn.addEventListener('click', () => { fileInput.click(); });
+    if (fileInput) fileInput.addEventListener('change', () => {
+      const f = fileInput.files && fileInput.files[0];
+      if (!f) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = String(reader.result || '');
+        const base64 = dataUrl.split(',')[1] || '';
+        const att = {
+          id: String(Date.now()),
+          name: f.name,
+          mime: f.type || 'image/png',
+          dataBase64: base64,
+          size: f.size
+        };
+        attachments.push(att);
+        renderThumbs();
+        try { if (fileInput) fileInput.value = ''; } catch {}
+      };
+      reader.readAsDataURL(f);
     });
     if (editBtn) editBtn.addEventListener('click', () => {
       const txtEl = document.getElementById('taskText') as HTMLTextAreaElement | null;
@@ -157,6 +182,7 @@
 
   // Keep a simple in-memory copy of the last plan shown
   let currentPlan: { title: string; description: string; steps: Array<{ id: string; description: string; type: string }>; } | undefined;
+  const attachments: Array<{ id: string; name: string; mime: string; dataBase64: string; size: number }> = [];
   let lastSavedPlans: Array<{ id: string; title: string; description?: string; stepCount?: number }> | undefined;
 
   function buildCopilotPrompt(plan: { title: string; description: string; steps: Array<{ id: string; description: string; type: string }>; }, phases: Array<{ id: string; title: string; content: string }>): string {
@@ -224,6 +250,24 @@
       const el = document.querySelector('[data-plan-id="' + p.id + '"]') as HTMLDivElement | null;
       if (el) el.addEventListener('click', () => {
         try { vscode.postMessage({ command: 'loadSavedPlan', id: p.id }); } catch {}
+      });
+    });
+  }
+
+  function renderThumbs(): void {
+    if (!thumbs) return;
+    thumbs.innerHTML = (attachments || []).map(att => {
+      return '<div class="thumb" data-att-id="' + att.id + '">'
+        + '<img src="data:' + att.mime + ';base64,' + att.dataBase64 + '" />'
+        + '<button class="x" title="Remove">×</button>'
+        + '</div>';
+    }).join('');
+    (attachments || []).forEach(att => {
+      const el = document.querySelector('.thumb[data-att-id="' + att.id + '"] .x') as HTMLButtonElement | null;
+      if (el) el.addEventListener('click', () => {
+        const idx = attachments.findIndex(a => a.id === att.id);
+        if (idx >= 0) attachments.splice(idx, 1);
+        renderThumbs();
       });
     });
   }
